@@ -839,6 +839,9 @@ export class QoderProvider extends BaseProvider {
         let finishEmitted = false;
         const toolIndex = new Map<string, number>();
         let nextToolIdx = 0;
+        const pendingToolCalls = new Map<number, { id: string; function: { name: string; arguments: string } }>();
+        let lastActivity = Date.now();
+        const STREAM_TIMEOUT = 300000; // 5 minutes
 
         const enqueue = (delta: any, finishReason: string | null = null) => {
           const chunk = {
@@ -853,9 +856,30 @@ export class QoderProvider extends BaseProvider {
 
         try {
           while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
+            // Check timeout
+            if (Date.now() - lastActivity > STREAM_TIMEOUT) {
+              console.error(`[Qoder] Stream timeout after ${STREAM_TIMEOUT}ms`);
+              break;
+            }
+
+            // Use Promise.race for timeout on read
+            const readPromise = reader.read();
+            const timeoutPromise = new Promise<{ done: boolean; value?: Uint8Array }>((_, reject) => {
+              setTimeout(() => reject(new Error("Stream read timeout")), STREAM_TIMEOUT);
+            });
+
+            let result;
+            try {
+              result = await Promise.race([readPromise, timeoutPromise]);
+            } catch (e) {
+              console.error(`[Qoder] Stream read error: ${e instanceof Error ? e.message : String(e)}`);
+              break;
+            }
+
+            if (result.done) break;
+            lastActivity = Date.now();
+
+            buffer += decoder.decode(result.value, { stream: true });
             const lines = buffer.split("\n");
             buffer = lines.pop() || "";
 
@@ -887,9 +911,13 @@ export class QoderProvider extends BaseProvider {
                   if (idx === undefined) {
                     idx = nextToolIdx++;
                     toolIndex.set(key, idx);
+                    pendingToolCalls.set(idx, { id: "", function: { name: "", arguments: "" } });
                   }
                   // Normalize tool IDs to Anthropic format
                   const normalizedId = normalizeToolCallId(tc.id, idx);
+                  if (tc.id) pendingToolCalls.get(idx)!.id = normalizedId;
+                  if (tc.function?.name) pendingToolCalls.get(idx)!.function.name = tc.function.name;
+                  if (tc.function?.arguments) pendingToolCalls.get(idx)!.function.arguments += tc.function.arguments;
                   remapped.push({
                     index: idx,
                     id: normalizedId,
@@ -901,6 +929,8 @@ export class QoderProvider extends BaseProvider {
               }
 
               if (parsedDelta.finishReason) {
+                // Wait a bit to ensure all tool_calls are complete
+                await new Promise(resolve => setTimeout(resolve, 50));
                 enqueue({}, parsedDelta.finishReason);
                 finishEmitted = true;
               }
@@ -925,6 +955,7 @@ export class QoderProvider extends BaseProvider {
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         } catch (error) {
           const msg = error instanceof Error ? error.message : String(error);
+          console.error(`[Qoder] Stream error: ${msg}`);
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message: msg, type: "api_error" } })}\n\n`));
         } finally {
           controller.close();
