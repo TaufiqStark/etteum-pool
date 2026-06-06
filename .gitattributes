@@ -1,0 +1,21 @@
+# Force LF line endings for shell scripts, Docker, and config files
+# This prevents CRLF issues when building Linux Docker images from Windows
+*.sh           text eol=lf
+Dockerfile     text eol=lf
+.dockerignore  text eol=lf
+*.env*         text eol=lf
+*.yaml         text eol=lf
+*.yml          text eol=lf
+*.json         text eol=lf
+*.lock         text eol=lf
+*.toml         text eol=lf
+*.ts           text eol=lf
+*.tsx          text eol=lf
+*.js           text eol=lf
+*.jsx          text eol=lf
+*.css          text eol=lf
+*.html         text eol=lf
+
+# Documentation can keep platform-native line endings
+*.md           text eol=lf
+LICENSE        text eol=lf

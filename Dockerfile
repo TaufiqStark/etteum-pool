@@ -48,8 +48,7 @@ RUN python3 -m venv scripts/auth/.venv && \
 
 RUN cd dashboard && VITE_BACKEND_PORT=1630 bun run build
 
-# Make entrypoint executable
-RUN chmod +x entrypoint.sh
+RUN sed -i 's/\r$//' entrypoint.sh && chmod +x entrypoint.sh
 
 EXPOSE 1630 1631
 
