@@ -1,0 +1,15 @@
+node_modules
+.git
+.env
+*.log
+.poolprox.log
+dashboard/node_modules
+dashboard/dist
+test
+*.md
+.gitignore
+poolprox
+poolprox.ps1
+poolprox2.service
+install.sh
+install.ps1
